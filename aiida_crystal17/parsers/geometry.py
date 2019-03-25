@@ -59,7 +59,7 @@ CENTERING_CODE_MAP = {
         [0.0000, 0.0000, 1.0000]],  # modified P_C
     5: [[-1.0000, 1.0000, 1.0000], [1.0000, -1.0000, 1.0000],
         [1.0000, 1.0000, -1.0000]],  # P_F
-    6: [[0, 1.0000, 1.0000], [1.0000, 0.0000, 1.0000],
+    6: [[0.000, 1.0000, 1.0000], [1.0000, 0.0000, 1.0000],
         [1.0000, 1.0000, 0.0000]],  # P_I
 }  # primitive to crystallographic, invert for other way round
 
@@ -193,7 +193,7 @@ def get_centering_code(sg_number, sg_symbol):
 
     :param sg_number: the space group number
     :param sg_symbol: the space group symbol
-    :return: CRYSTAL centering code
+    :return: centering code
     """
     lattice_type = get_lattice_type(sg_number)
 
@@ -558,7 +558,7 @@ def structdict_to_ase(structdict):
         numbers=structdict["atomic_numbers"],
         pbc=structdict["pbc"],
         positions=structdict["ccoords"],
-        tags=structdict["equivalent"])
+        tags=structdict.get("equivalent", None))
     return atoms
 
 

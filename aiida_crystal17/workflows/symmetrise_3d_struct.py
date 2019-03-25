@@ -17,7 +17,8 @@ StructSettingsData = DataFactory('crystal17.structsettings')
 
 
 class Symmetrise3DStructure(WorkChain):
-    """modify an AiiDa structure instance and compute its symmetry, given a settings dictionary
+    """modify an AiiDa structure instance and compute its symmetry, 
+    given a settings dictionary
 
     Symmetry is restricted by atom kinds
     """

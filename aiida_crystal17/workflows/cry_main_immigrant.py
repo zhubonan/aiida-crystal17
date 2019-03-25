@@ -14,66 +14,103 @@ class CryMainImmigrant(WorkChain):
     an immigrant calculation of CryMainCalculation
     """
     pass
-    # TODO how to to set attributes of a WorkCalculation? (below works for v0.12 but not v1)
-    # self.calc._updatable_attributes = tuple(
-    #     list(self.calc._updatable_attributes) +
-    #     ["jobresource_params", "parser"])
-    # self.calc._set_attr("state", calc_states.FINISHED, stored_check=False)
-    # self.calc._set_attr("jobresource_params", resources, stored_check=False)
-    # self.calc._set_attr("parser", parser_cls.__name__, stored_check=False)
 
 
 # pylint: disable=too-many-locals
-def migrate_as_main(work_dir,
-                    input_rel_path,
-                    output_rel_path,
-                    resources=None,
-                    input_links=None):
-    """ migrate existing CRYSTAL17 calculation as a WorkCalculation,
+def migrate_as_main(input_d12_path, output_main_path,
+                    jobresource_params,
+                    max_wallclock_seconds=None,
+                    max_memory_kb=None,
+                    computer=None, computer_path=None,
+                    allow_parsing_error=True,
+                    encoding_in='utf8', encoding_out='utf8', in_filter=None,
+                    input_links=None, test_run=False):
+    """migrate existing CRYSTAL17 calculation as a WorkCalculation,
     which imitates a ``crystal17.main`` calculation
 
-    :param work_dir: the absolute path to the directory to holding the files
-    :param input_rel_path: relative path (from work_dir) to .d12 file
-    :param output_rel_path: relative path (from work_dir) to .out file
-    :param resources: a dict of of job resource parameters (not yet implemented)
-    :param input_links: a dict of existing nodes to link inputs to (allowed keys: 'structure', 'settings', 'parameters')
+    Parameters
+    ----------
+    input_d12_path: str
+        path to the .d12 file
+    output_main_path: str
+        path to the main output folder
+    jobresource_params: dict
+        resources of the calculation
+    max_memory_kb: int or None
+    max_wallclock_seconds: int or None
+    computer: object or None
+        the computer that the calculation was run on (if available)
+    computer_path: str or None
+        the path on the computer where the output files are stored
+    allow_parsing_error: bool
+        if True and the output file parser fails,
+        the calculation will be stored with attribute status="FAILED"
+    encoding_in: str
+        encoding of intput file
+    encoding_out: str
+        encoding of output file
+    in_filter: None or func
+        (optional) function to parse the contents of the input file through,
+        before extracting its data
+    input_links=None: None or dict
+        map of existing nodes to calculation inputs
+        (allowed keys: 'structure', 'settings', 'parameters')
+        e.g. {'structure': {"cif_file": CifNode}}
 
-    Example of input_links={'structure': {"cif_file": CifNode}},
-    will create a link (via a workcalculation) from the CifNode to the input StructureData
+    Returns
+    -------
+    aiida.orm.WorkCalculation:
+        the calculation node
 
-    :raise IOError: if the work_dir or files do not exist
-    :raises aiida.common.exceptions.ParsingError: if the input parsing fails
-    :raises aiida.parsers.exceptions.OutputParsingError: if the output parsing fails
-
-    :return: the calculation node
-    :rtype: aiida.orm.WorkCalculation
+    Raises
+    ------
+    IOError:
+        if the work_dir or files do not exist
+    aiida.common.exceptions.ParsingError:
+        if the input parsing fails
+    aiida.parsers.exceptions.OutputParsingError:
+        if the output parsing fails
 
     """
     from aiida.orm.data.folder import FolderData
+    from aiida.orm.data.remote import RemoteData
     from aiida_crystal17.calculations.cry_main import CryMainCalculation
     from aiida_crystal17.parsers.cry_basic import CryBasicParser
 
     calc = CryMainCalculation()
     parser_cls = CryBasicParser
 
+    calc_attributes = (
+        {
+            "process": "CryMainImmigrant",
+            "state": "FINISHED",
+            "parser": parser_cls.__name__,
+            "jobresource_params": dict(jobresource_params)
+        }
+    )
+    if computer_path is not None:
+        calc_attributes["remote_workdir"] = str(computer_path)
+    if max_memory_kb is not None:
+        calc_attributes["max_memory_kb"] = int(max_memory_kb)
+    if max_wallclock_seconds is not None:
+        calc_attributes["max_wallclock_seconds"] = int(max_wallclock_seconds)
+
     # TODO optionally use transport to remote work directory
-    if not os.path.exists(work_dir):
-        raise IOError("work_dir doesn't exist: {}".format(work_dir))
-    input_path = os.path.join(work_dir, input_rel_path)
-    if not os.path.exists(input_path):
-        raise IOError("input_path doesn't exist: {}".format(input_path))
-    output_path = os.path.join(work_dir, output_rel_path)
-    if not os.path.exists(output_path):
-        raise IOError("output_path doesn't exist: {}".format(output_path))
+    # to get input/output
 
-    if resources:
-        raise NotImplementedError("saving resources to ImmigrantCalculation")
-    # resources = {} if resources is None else resources
+    if not os.path.exists(input_d12_path):
+        raise IOError("input_d12_path doesn't exist: "
+                      "{}".format(input_d12_path))
+    if not os.path.exists(output_main_path):
+        raise IOError("output_main_path doesn't exist: "
+                      "{}".format(output_main_path))
 
-    inputs = create_inputs(input_path, output_path)
+    inputs = create_inputs(input_d12_path, output_main_path,
+                           encoding_in=encoding_in, encoding_out=encoding_out,
+                           in_filter=in_filter)
 
     psuccess, output_nodes = parse_mainout(
-        output_path,
+        output_main_path,
         parser_class=parser_cls.__name__,
         init_struct=inputs['structure'],
         init_settings=inputs['settings'])
@@ -82,14 +119,17 @@ def migrate_as_main(work_dir,
     perrors = outparams.get_attr("errors") + outparams.get_attr(
         "parser_warnings")
 
-    if perrors or not psuccess:
-        raise ParsingError(
-            "the parser failed, raising the following errors:\n{}".format(
-                "\n\t".join(perrors)))
+    if (perrors or not psuccess):
+        if not allow_parsing_error:
+            raise ParsingError(
+                "the parser failed, raising the following errors:\n{}".format(
+                    "\n\t".join(perrors)))
+        else:
+            calc_attributes["state"] = 'FAILED'
 
     folder = FolderData()
-    folder.add_path(input_path, calc._DEFAULT_INPUT_FILE)  # pylint: disable=protected-access
-    folder.add_path(output_path, calc._DEFAULT_OUTPUT_FILE)  # pylint: disable=protected-access
+    folder.add_path(input_d12_path, calc._DEFAULT_INPUT_FILE)
+    folder.add_path(output_main_path, calc._DEFAULT_OUTPUT_FILE)
 
     # create links from existing nodes to inputs
     input_links = {} if not input_links else input_links
@@ -108,6 +148,8 @@ def migrate_as_main(work_dir,
     for el, basis in inputs["basis"].items():
         inputs_dict[calc.get_linkname_basisset(el)] = basis
 
+    # TODO add code input 
+
     outputs_dict = {parser_cls.get_linkname_outparams(): outparams}
     if "settings" in output_nodes:
         outputs_dict[parser_cls.get_linkname_outsettings()] = output_nodes.pop(
@@ -121,12 +163,27 @@ def migrate_as_main(work_dir,
 
     outputs_dict["retrieved"] = folder
 
+    if computer is not None and computer_path is not None:
+        remote = RemoteData()
+        remote.set_computer(computer)
+        remote.set_remote_path(computer_path)
+        outputs_dict["remote_folder"] = remote
+
     calcnode = _run_dummy_workchain(inputs_dict, outputs_dict,
                                     CryMainImmigrant)
 
     calcnode.label = "CryMainImmigrant"
-    calcnode.description = "an immigrated CRYSTAL17 calculation into the {} format".format(
+    calcnode.description = (
+        "an immigrated CRYSTAL17 calculation into the {} format").format(
         calc.__class__)
+
+    # TODO this is hack and will only work for aiida < v1
+    calcnode._updatable_attributes = tuple(
+        list(calcnode._updatable_attributes) + list(calc_attributes.keys()))
+    calcnode.SEALED_KEY = False
+    for key, val in calc_attributes.items():
+        calcnode._set_attr(key, val)
+    calcnode.SEALED_KEY = True
 
     return calcnode
 

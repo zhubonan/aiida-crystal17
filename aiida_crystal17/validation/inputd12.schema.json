@@ -452,6 +452,10 @@
               "description": "All bielectronic integrals computed exactly",
               "type": "boolean"
             },
+            "SCFDIR": {
+              "description": "monoelectronic and bielectronic integrals are evaluated at each cycle",
+              "type": "boolean"
+            },
             "FMIXING": {
               "description": "Fock/KS matrix (cycle i and i-1) mixing",
               "type": "integer",

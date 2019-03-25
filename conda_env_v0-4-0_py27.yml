@@ -1,0 +1,57 @@
+# usage: conda env create --file=conda_env_v0-4-0_py27.yml
+name: aiida_cry17_0_4_0_py27
+channels:
+  - conda-forge
+  - cjs14 # for pgtest
+  - matsci  # for pymatgen
+  - bioconda # for chainmap
+  - anaconda # for sphinx_rtd_theme 
+  - defaults
+dependencies:
+  # build dependencies
+  - python<3
+  - pip
+
+  # aiida
+  - aiida-core==0.12.2
+  - chainmap==1.0.2
+
+  # science tools
+  # - numpy
+  # - matplotlib
+  # - pandas
+  # - pymatgen # ==2018.8.10
+  # - sympy
+
+  # testing
+  - pytest
+  - pytest-timeout
+  - pgtest
+
+  # for aiida-crystal17
+  - aiida-crystal17==0.4.0
+
+  # vs code development
+  - flake8
+  - autopep8
+  - rope  
+
+  # docs
+  - sphinx
+  - sphinx_rtd_theme
+  - doc8
+
+# Notes
+
+# setup
+# >> conda activate aiida_cry17_0_4_0_py27
+
+# testing
+# >> export MOCK_EXECUTABLES=true
+# >> export AIIDA_PATH=/Users/cjs14/GitHub/aiida-cjs-working/aiida_dbs/aiida_0_12_2_py27/.aiida
+# >> initdb -D /Users/cjs14/pgsql/temp2
+# >> pg_ctl -D /Users/cjs14/pgsql/temp2 start
+# >> verdi quicksetup
+# >> pytest -vv --disable-warnings --show_capture=stdout
+## currently lots of stderr warning from django
+

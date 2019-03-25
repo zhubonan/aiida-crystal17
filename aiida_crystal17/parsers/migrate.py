@@ -2,6 +2,7 @@
 module to create inputs from existing CRYSTAL17 runs
 """
 import os
+import io
 import tempfile
 
 import ase
@@ -11,15 +12,35 @@ from ejplugins.crystal import CrystalOutputPlugin
 
 
 # pylint: disable=too-many-locals
-def create_inputs(inpath, outpath):
+def create_inputs(inpath, outpath,
+                  encoding_in='utf8', encoding_out='utf8', in_filter=None):
     """ create ``crystal17.main`` input nodes from an existing run
 
-    NB: none of the nodes are stored, also
-    existing basis will be retrieved if availiable
+    Parameters
+    ----------
+    inpath: str
+        path to .d12 file
+    outpath: str
+        path to .out file
+    encoding_in: str
+        encoding of intput file
+    encoding_out: str
+        encoding of output file
+    in_filter: None or func
+        (optional) function to parse the contents of the input file through,
+        before extracting its data
 
-    :param inpath: path to .d12 file
-    :param outpath: path to .out file
-    :return: dictionary of inputs, with keys 'structure', 'parameters', 'settings', 'structure', 'basis'
+    Returns
+    -------
+    dict:
+        with keys 'structure', 'parameters', 'settings', 'structure', 'basis'
+
+    Notes
+    -----
+
+    None of the nodes are stored, also
+    existing basis sets will be retrieved if availiable
+
     """
     from aiida.orm import DataFactory, CalculationFactory
     calc_cls = CalculationFactory('crystal17.main')
@@ -29,8 +50,11 @@ def create_inputs(inpath, outpath):
 
     inputs = {}
 
-    with open(inpath) as f:
+    with io.open(inpath, encoding=encoding_in) as f:
         d12content = f.read()
+
+    if in_filter is not None:
+        d12content = in_filter(d12content)
 
     output_dict, basis_sets, atom_props = extract_data(d12content)
 
@@ -38,7 +62,7 @@ def create_inputs(inpath, outpath):
     if not os.path.exists(outpath):
         raise OutputParsingError(
             "The raw data file does not exist: {}".format(outpath))
-    with open(outpath) as f:
+    with io.open(outpath, encoding=encoding_out) as f:
         try:
             data = cryparse.read_file(f, log_warnings=False)
         except IOError as err:
@@ -84,7 +108,7 @@ def create_inputs(inpath, outpath):
 
         bfile = tempfile.NamedTemporaryFile(delete=False)
         try:
-            with open(bfile.name, "w") as f:
+            with io.open(bfile.name, "w") as f:
                 f.write(bset)
             bdata, _ = basis_cls.get_or_create(
                 bfile.name, use_first=False, store_basis=False)

@@ -5,6 +5,7 @@ from __future__ import absolute_import
 
 import hashlib
 import os
+import io
 import tempfile
 
 import six
@@ -149,7 +150,8 @@ def _parse_first_line(line, fname):
     elif 200 < anumber < 999:
         raise NotImplementedError(
             "valence electron basis sets not currently supported")
-        # TODO support valence electron basis sets not currently supported (ECP must also be defined)
+        # TODO support valence electron basis sets
+        # not currently supported (ECP must also be defined)
         # atomic_number = anumber % 100
         # basis_type = "valence-electron"
 
@@ -176,7 +178,7 @@ def _parse_first_line(line, fname):
     return atomic_number, basis_type, num_shells, newline
 
 
-def validate_basis_string(instr):
+def validate_basis_string(instr, init_line=1):
     """ validate that only one basis set is present,
     in a recognised format
 
@@ -187,7 +189,8 @@ def validate_basis_string(instr):
     indx = 0
 
     try:
-        anum, nshells = lines[indx].strip().split()  # pylint: disable=unused-variable
+        anum, nshells = lines[indx].strip().split(
+        )  # pylint: disable=unused-variable
         anum, nshells = int(anum), int(nshells)
     except ValueError:
         raise ValueError("expected 'anum nshells': {}".format(
@@ -197,19 +200,20 @@ def validate_basis_string(instr):
         try:
             btype, stype, nfuncs, charge, scale = lines[indx].strip().split()
             btype, stype, nfuncs = [int(i) for i in [btype, stype, nfuncs]]
-            charge, scale = [float(i) for i in [charge, scale]]  # pylint: disable=unused-variable
+            charge, scale = [float(i) for i in [charge, scale]
+                             ]  # pylint: disable=unused-variable
         except ValueError:
             raise ValueError(
-                "expected 'btype, stype, nfuncs, charge, scale': {}".format(
-                    lines[indx].strip()))
+                "expected 'btype, stype, nfuncs, charge, scale' "
+                "on line {}: {}".format(indx + init_line, lines[indx].strip()))
         if btype == 0:
             for _ in range(nfuncs):
                 indx += 1
 
     if len(lines) > indx + 1:
         raise ValueError(
-            "the basis set string contains more than one basis set or has trailing empty lines:\n{}".
-            format(instr))
+            "the basis set string contains more than one basis set "
+            "or has trailing empty lines:\n{}".format(instr))
 
     return True
 
@@ -237,7 +241,7 @@ def parse_basis(fname):
         8 2
         1 0 3  2.  0.
         1 1 3  6.  0.
-    
+
     """
     from aiida.common.exceptions import ParsingError
     meta_data = {}
@@ -249,8 +253,8 @@ def parse_basis(fname):
     ]
     parsing_data = False
     content = []
-    with open(fname) as f:
-        for line in f:
+    with io.open(fname) as f:
+        for i, line in enumerate(f):
             # ignore commented and blank lines
             if line.strip().startswith("#") or not line.strip():
                 continue
@@ -280,8 +284,9 @@ def parse_basis(fname):
             parsing_data = True
 
             if not content:
-                atomic_number, basis_type, num_shells, line = _parse_first_line(
-                    line, fname)
+                fist_line_num = i
+                params = _parse_first_line(line, fname)
+                atomic_number, basis_type, num_shells, line = params
 
                 meta_data["atomic_number"] = atomic_number
                 meta_data["element"] = ATOMIC_NUM2SYMBOL[atomic_number]
@@ -294,7 +299,7 @@ def parse_basis(fname):
         raise ParsingError(
             "The basis set file contains no content: {}".format(fname))
 
-    validate_basis_string("".join(content))
+    validate_basis_string("".join(content), fist_line_num)
 
     return meta_data, "".join(content)
 
@@ -386,7 +391,7 @@ class BasisSetData(Data):
         :return: content_str
         """
         # TODO dealing with caching? see get_array in ArrayData, or are we doing this with the md5 hash
-        with open(self.get_file_abs_path()) as f:
+        with io.open(self.get_file_abs_path()) as f:
             content = f.read()
         return content
 
@@ -490,7 +495,7 @@ class BasisSetData(Data):
         # store the rest of the file content as a file in the file repository
         filename = os.path.basename(filepath)
         with tempfile.NamedTemporaryFile() as f:
-            with open(f.name, "w") as fobj:
+            with io.open(f.name, "w") as fobj:
                 fobj.writelines(content)
             self.add_path(f.name, filename)
         self._set_attr('filename', filename)

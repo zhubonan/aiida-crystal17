@@ -50,7 +50,9 @@ class CryMainImmigrantCalculation(CryMainCalculation):
                            open_transport,
                            input_file_name=None,
                            output_file_name=None,
-                           remote_workdir=None):
+                           remote_workdir=None,
+                           preconvert_input=None,
+                           calc_hooks=None):
 
         # Make sure the remote workdir and input + output file names were
         # provided either before or during the call to this method. If they
@@ -69,7 +71,7 @@ class CryMainImmigrantCalculation(CryMainCalculation):
                 '(c) use the set_remote_workdir method\n'
                 '    [calc.set_remote_workdir(your_remote_workdir)]')
         if input_file_name is not None:
-            self._DEFAULT_INPUT_FILE = input_file_name
+            self._DEFAULT_INPUT_FILE = os.path.split(input_file_name)[1]
         elif self._DEFAULT_INPUT_FILE is None:
             raise InputValidationError(
                 'The input file_name has not been specified.\n'
@@ -82,7 +84,7 @@ class CryMainImmigrantCalculation(CryMainCalculation):
                 '(c) use the set_input_file_name method\n'
                 '    [calc.set_input_file_name(your_file_name)]')
         if output_file_name is not None:
-            self._DEFAULT_OUTPUT_FILE = output_file_name
+            self._DEFAULT_OUTPUT_FILE = os.path.split(output_file_name)[1]
         elif self._DEFAULT_OUTPUT_FILE is None:
             raise InputValidationError(
                 'The input file_name has not been specified.\n'
@@ -114,6 +116,25 @@ class CryMainImmigrantCalculation(CryMainCalculation):
                 "`with` statement context guard. See the tutorial for more "
                 "information.")
 
+        # check the calc_hooks are valid
+        if calc_hooks is not None:
+            try:
+                keys = [p for f, ps in calc_hooks for p in ps]
+            except:
+                raise InputValidationError(
+                    "Invalid calc_hooks list structure"
+                )
+            if not set(keys).issubset(["parameters", "structure", "settings"]):
+                raise InputValidationError(
+                    "Invalid calc_hooks key, must be one of structure, "
+                    "parameters or settings: {}".format(keys)
+                )
+            if not len(set(keys)) == len(keys):
+                raise InputValidationError(
+                    "The keys for calc_hooks must be used "
+                    "only once: {}".format(keys)
+                )
+
         # Copy the input and output files to a temp folder for parsing.
         with SandboxFolder() as folder:
 
@@ -132,7 +153,15 @@ class CryMainImmigrantCalculation(CryMainCalculation):
                                              self._DEFAULT_OUTPUT_FILE)
 
             # create inputs
-            innodes = create_inputs(local_input_path, local_output_path)
+            innodes = create_inputs(
+                local_input_path,
+                local_output_path,
+                in_filter=preconvert_input)
+
+        if calc_hooks is not None:
+            for func, keys in calc_hooks:
+                key_nodes = [innodes[k] for k in keys]
+                func(*key_nodes)
 
         # create nodes
         self.use_parameters(innodes["parameters"])
